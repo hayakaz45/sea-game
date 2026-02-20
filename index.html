@@ -2,54 +2,297 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>海の生き物キャッチ</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4fc3f7">
+<title>海の生き物キャッチゲーム Ultimate</title>
 <style>
-body { margin:0; overflow:hidden; background:#01579b; color:white; font-family:sans-serif;}
-#score { position:absolute; top:10px; left:10px; font-size:20px;}
-.creature {
+body {
+  margin:0;
+  overflow:hidden;
+  font-family:sans-serif;
+  background:linear-gradient(#4fc3f7,#01579b);
+}
+#game { position:relative; width:100vw; height:100vh;}
+#score,#timer,#level {
+  position:absolute; top:10px; color:white; font-size:18px;
+}
+#score{left:10px;}
+#timer{right:10px;}
+#level{left:50%; transform:translateX(-50%);}
+
+.fish {
   position:absolute;
   font-size:40px;
   cursor:pointer;
-  user-select:none;
+}
+
+.bubble {
+  position:absolute;
+  bottom:-50px;
+  animation:rise linear forwards;
+}
+@keyframes rise {
+  to { transform:translateY(-110vh); opacity:0; }
+}
+
+#overlay {
+  position:absolute;
+  width:100%; height:100%;
+  background:rgba(0,0,50,0.6);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  color:white;
+}
+
+button {
+  padding:10px 20px;
+  font-size:18px;
+  cursor:pointer;
+}
+
+.score-popup {
+  position:absolute;
+  font-weight:bold;
+  pointer-events:none;
+  animation:floatUp 1s ease-out forwards;
+}
+.plus { color:#00ffcc; }
+.minus { color:#ff4d4d; }
+
+@keyframes floatUp {
+  from { transform:translateY(0); opacity:1; }
+  to { transform:translateY(-40px); opacity:0; }
 }
 </style>
 </head>
-<body>
 
-<div id="score">スコア: 0</div>
+<body>
+<div id="game">
+  <div id="score">スコア:0</div>
+  <div id="timer">残り:30秒</div>
+  <div id="level">Lv.1</div>
+
+  <div id="overlay">
+    <h1>海の生き物キャッチ！</h1>
+    <button onclick="startGame()">スタート</button>
+  </div>
+</div>
+
+<!-- 効果音 -->
+<audio id="goodSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_115b9b7b0b.mp3"></audio>
+<audio id="badSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_3c2c1e0c2b.mp3"></audio>
+<audio id="bgmNormal" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
+<audio id="bgmBoss" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_5d3c6f7c1e.mp3"></audio>
 
 <script>
-let score = 0;
-const scoreEl = document.getElementById("score");
+let score,timeLeft,level;
+let fishInterval,timerInterval,bubbleInterval;
+let bossActive=false;
 
-function spawn() {
-  const el = document.createElement("div");
-  el.className = "creature";
-  el.innerText = ["🐟","🐙","🦀","🦈","💎"][Math.floor(Math.random()*5)];
-  el.style.left = Math.random()*window.innerWidth + "px";
-  el.style.top = Math.random()*window.innerHeight + "px";
+const game=document.getElementById("game");
+const scoreDisplay=document.getElementById("score");
+const timerDisplay=document.getElementById("timer");
+const levelDisplay=document.getElementById("level");
+const overlay=document.getElementById("overlay");
 
-  el.onclick = () => {
-    let add = 10;
-    if(el.innerText==="🦈") add = -20;
-    if(el.innerText==="💎") add = 50;
-    score += add;
-    scoreEl.innerText = "スコア: " + score;
-    el.remove();
-  };
+const goodSound=document.getElementById("goodSound");
+const badSound=document.getElementById("badSound");
+const bgmNormal=document.getElementById("bgmNormal");
+const bgmBoss=document.getElementById("bgmBoss");
 
-  document.body.appendChild(el);
-  setTimeout(()=>el.remove(),2000);
+const types=[
+ {emojis:["🐟","🐠","🐡","🦀","🦑","🐙","🦞","🐬"],point:1,chance:0.6},
+ {emojis:["💎"],point:5,chance:0.2},
+ {emojis:["🦈"],point:-3,chance:0.2}
+];
+
+function getRandomType(){
+ let r=Math.random(),sum=0;
+ for(let t of types){ sum+=t.chance; if(r<sum)return t;}
+ return types[0];
 }
 
-setInterval(spawn, 800);
+function showScorePopup(x,y,value){
+ const p=document.createElement("div");
+ p.className="score-popup "+(value>0?"plus":"minus");
+ p.textContent=(value>0?"+":"")+value;
+ p.style.left=x+"px"; p.style.top=y+"px";
+ game.appendChild(p);
+ setTimeout(()=>p.remove(),1000);
+}
 
-// Service Worker
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
+function createFish(){
+ const type=getRandomType();
+ const fish=document.createElement("div");
+ fish.className="fish";
+
+ const emoji=type.emojis[Math.floor(Math.random()*type.emojis.length)];
+ fish.textContent=emoji;
+
+ let x=Math.random()*window.innerWidth;
+ let y=Math.random()*window.innerHeight;
+
+ fish.style.left=x+"px";
+ fish.style.top=y+"px";
+
+ game.appendChild(fish);
+
+ let sx=0,sy=0;
+
+ if(emoji==="🐟")sx=1;
+ if(emoji==="🐠")sx=2;
+ if(emoji==="🦀")sx=2;
+ if(emoji==="🦞")sx=3;
+ if(emoji==="🐬")sx=5;
+ if(emoji==="🐙"){sx=Math.random()*2-1; sy=Math.random()*2-1;}
+
+ const move=setInterval(()=>{
+   x+=sx; y+=sy;
+   if(x<0||x>window.innerWidth-40)sx*=-1;
+   if(y<0||y>window.innerHeight-40)sy*=-1;
+   fish.style.left=x+"px";
+   fish.style.top=y+"px";
+ },30);
+
+ fish.onclick=(e)=>{
+   score+=type.point;
+   if(score<0)score=0;
+   scoreDisplay.textContent="スコア:"+score;
+
+   showScorePopup(e.clientX,e.clientY,type.point);
+
+   (type.point>0?goodSound:badSound).play();
+
+   clearInterval(move);
+   fish.remove();
+ };
+
+ setTimeout(()=>{
+   clearInterval(move);
+   fish.remove();
+ },3000);
+}
+
+function createBubble(){
+ const b=document.createElement("div");
+ b.className="bubble";
+ b.textContent="○";
+ b.style.left=Math.random()*window.innerWidth+"px";
+ b.style.animationDuration=(3+Math.random()*3)+"s";
+ game.appendChild(b);
+ setTimeout(()=>b.remove(),6000);
+}
+
+function spawnBoss(){
+ if(bossActive)return;
+
+ bossActive=true;
+ bgmNormal.pause();
+ bgmBoss.play();
+
+ const boss=document.createElement("div");
+ boss.textContent="🐙";
+ boss.style.position="absolute";
+ boss.style.fontSize="100px";
+
+ let x=200,y=200,hp=5;
+
+ game.appendChild(boss);
+
+ const move=setInterval(()=>{
+   x+=3; y+=2;
+   boss.style.left=x+"px";
+   boss.style.top=y+"px";
+ },30);
+
+ boss.onclick=(e)=>{
+   hp--;
+   if(hp<=0){
+     score+=20;
+
+     showScorePopup(e.clientX,e.clientY,20);
+
+     scoreDisplay.textContent="スコア:"+score;
+
+     clearInterval(move);
+     boss.remove();
+
+     bossActive=false;
+     bgmBoss.pause();
+     bgmNormal.play();
+   }
+ };
+}
+
+function saveHighScore(s){
+ let scores=JSON.parse(localStorage.getItem("scores"))||[];
+ scores.push(s);
+ scores.sort((a,b)=>b-a);
+ scores=scores.slice(0,5);
+ localStorage.setItem("scores",JSON.stringify(scores));
+}
+
+function getScores(){
+ return JSON.parse(localStorage.getItem("scores"))||[];
+}
+
+function rankingHTML(){
+ let s=getScores();
+ let html="<h2>🏆ランキング</h2>";
+ s.forEach((v,i)=> html+=`<p>${i+1}位:${v}</p>`);
+ return html;
+}
+
+function startGame(){
+ score=0;
+ timeLeft=30;
+ level=1;
+ bossActive=false;
+
+ overlay.style.display="none";
+
+ bgmNormal.currentTime=0;
+ bgmNormal.play();
+
+ fishInterval=setInterval(createFish,800);
+ timerInterval=setInterval(updateTimer,1000);
+ bubbleInterval=setInterval(createBubble,300);
+}
+
+function updateTimer(){
+ timeLeft--;
+ timerDisplay.textContent="残り:"+timeLeft;
+
+ if(timeLeft%5===0){
+   level++;
+   levelDisplay.textContent="Lv."+level;
+
+   clearInterval(fishInterval);
+   fishInterval=setInterval(createFish,Math.max(200,800-level*100));
+ }
+
+ if(timeLeft===15)spawnBoss();
+
+ if(timeLeft<=0)endGame();
+}
+
+function endGame(){
+ clearInterval(timerInterval);
+ clearInterval(fishInterval);
+ clearInterval(bubbleInterval);
+
+ bgmNormal.pause();
+ bgmBoss.pause();
+
+ saveHighScore(score);
+
+ overlay.style.display="flex";
+ overlay.innerHTML=`
+   <h1>ゲーム終了</h1>
+   <p>スコア:${score}</p>
+   ${rankingHTML()}
+   <button onclick="startGame()">もう一度</button>
+ `;
 }
 </script>
 
