@@ -1,20 +1,57 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>海の生き物キャッチゲーム</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#4fc3f7">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>海の生き物キャッチ</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4fc3f7">
+<style>
+body { margin:0; overflow:hidden; background:#01579b; color:white; font-family:sans-serif;}
+#score { position:absolute; top:10px; left:10px; font-size:20px;}
+.creature {
+  position:absolute;
+  font-size:40px;
+  cursor:pointer;
+  user-select:none;
+}
+</style>
 </head>
 <body>
-  <h1>海の生き物キャッチゲーム</h1>
-  <p>ここにあなたのゲームコードを入れてください。</p>
 
-  <script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js");
-  }
-  </script>
+<div id="score">スコア: 0</div>
+
+<script>
+let score = 0;
+const scoreEl = document.getElementById("score");
+
+function spawn() {
+  const el = document.createElement("div");
+  el.className = "creature";
+  el.innerText = ["🐟","🐙","🦀","🦈","💎"][Math.floor(Math.random()*5)];
+  el.style.left = Math.random()*window.innerWidth + "px";
+  el.style.top = Math.random()*window.innerHeight + "px";
+
+  el.onclick = () => {
+    let add = 10;
+    if(el.innerText==="🦈") add = -20;
+    if(el.innerText==="💎") add = 50;
+    score += add;
+    scoreEl.innerText = "スコア: " + score;
+    el.remove();
+  };
+
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),2000);
+}
+
+setInterval(spawn, 800);
+
+// Service Worker
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+
 </body>
 </html>
