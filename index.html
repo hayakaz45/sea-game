@@ -2,17 +2,30 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>海の生き物キャッチゲーム Ultimate</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>海の生き物キャッチ（スマホ対応版）</title>
+
 <style>
 body {
   margin:0;
   overflow:hidden;
+  touch-action:none;
   font-family:sans-serif;
   background:linear-gradient(#4fc3f7,#01579b);
 }
-#game { position:relative; width:100vw; height:100vh;}
+
+#game {
+  position:relative;
+  width:100vw;
+  height:100vh;
+}
+
 #score,#timer,#level {
-  position:absolute; top:10px; color:white; font-size:18px;
+  position:absolute;
+  top:10px;
+  color:white;
+  font-size:20px;
+  z-index:10;
 }
 #score{left:10px;}
 #timer{right:10px;}
@@ -20,7 +33,7 @@ body {
 
 .fish {
   position:absolute;
-  font-size:40px;
+  font-size:clamp(40px,8vw,80px); /* ←スマホ用に大きく */
   cursor:pointer;
 }
 
@@ -35,24 +48,30 @@ body {
 
 #overlay {
   position:absolute;
-  width:100%; height:100%;
-  background:rgba(0,0,50,0.6);
+  width:100%;
+  height:100%;
+  background:rgba(0,0,50,0.7);
   display:flex;
   justify-content:center;
   align-items:center;
   flex-direction:column;
   color:white;
+  z-index:20;
 }
 
 button {
-  padding:10px 20px;
-  font-size:18px;
-  cursor:pointer;
+  padding:15px 30px;
+  font-size:20px;
+  border:none;
+  border-radius:10px;
+  background:#00c3ff;
+  color:white;
 }
 
 .score-popup {
   position:absolute;
   font-weight:bold;
+  font-size:20px;
   pointer-events:none;
   animation:floatUp 1s ease-out forwards;
 }
@@ -61,237 +80,189 @@ button {
 
 @keyframes floatUp {
   from { transform:translateY(0); opacity:1; }
-  to { transform:translateY(-40px); opacity:0; }
+  to { transform:translateY(-60px); opacity:0; }
 }
 </style>
 </head>
 
 <body>
+
 <div id="game">
-  <div id="score">スコア:0</div>
-  <div id="timer">残り:30秒</div>
-  <div id="level">Lv.1</div>
+  <div id="score">0</div>
+  <div id="timer">30</div>
+  <div id="level">Lv1</div>
 
   <div id="overlay">
-    <h1>海の生き物キャッチ！</h1>
+    <h1>?? タップでキャッチ！</h1>
     <button onclick="startGame()">スタート</button>
   </div>
 </div>
 
-<!-- 効果音 -->
-<audio id="goodSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_115b9b7b0b.mp3"></audio>
-<audio id="badSound" src="https://cdn.pixabay.com/audio/2022/03/15/audio_3c2c1e0c2b.mp3"></audio>
-<audio id="bgmNormal" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
-<audio id="bgmBoss" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_5d3c6f7c1e.mp3"></audio>
+<audio id="good" src="https://cdn.pixabay.com/audio/2022/03/15/audio_115b9b7b0b.mp3"></audio>
+<audio id="bad" src="https://cdn.pixabay.com/audio/2022/03/15/audio_3c2c1e0c2b.mp3"></audio>
+<audio id="bgm" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
+<audio id="bossbgm" loop src="https://cdn.pixabay.com/audio/2022/03/15/audio_5d3c6f7c1e.mp3"></audio>
 
 <script>
-let score,timeLeft,level;
-let fishInterval,timerInterval,bubbleInterval;
-let bossActive=false;
+let score,time,level;
+let fishInt,timerInt,bubbleInt;
+let boss=false;
 
 const game=document.getElementById("game");
-const scoreDisplay=document.getElementById("score");
-const timerDisplay=document.getElementById("timer");
-const levelDisplay=document.getElementById("level");
 const overlay=document.getElementById("overlay");
 
-const goodSound=document.getElementById("goodSound");
-const badSound=document.getElementById("badSound");
-const bgmNormal=document.getElementById("bgmNormal");
-const bgmBoss=document.getElementById("bgmBoss");
+const good=document.getElementById("good");
+const bad=document.getElementById("bad");
+const bgm=document.getElementById("bgm");
+const bossbgm=document.getElementById("bossbgm");
 
-const types=[
- {emojis:["🐟","🐠","🐡","🦀","🦑","🐙","🦞","🐬"],point:1,chance:0.6},
- {emojis:["💎"],point:5,chance:0.2},
- {emojis:["🦈"],point:-3,chance:0.2}
-];
-
-function getRandomType(){
- let r=Math.random(),sum=0;
- for(let t of types){ sum+=t.chance; if(r<sum)return t;}
- return types[0];
-}
-
-function showScorePopup(x,y,value){
+function popup(x,y,val){
  const p=document.createElement("div");
- p.className="score-popup "+(value>0?"plus":"minus");
- p.textContent=(value>0?"+":"")+value;
- p.style.left=x+"px"; p.style.top=y+"px";
+ p.className="score-popup "+(val>0?"plus":"minus");
+ p.textContent=(val>0?"+":"")+val;
+ p.style.left=x+"px";
+ p.style.top=y+"px";
  game.appendChild(p);
  setTimeout(()=>p.remove(),1000);
 }
 
-function createFish(){
- const type=getRandomType();
+function spawn(){
  const fish=document.createElement("div");
  fish.className="fish";
 
- const emoji=type.emojis[Math.floor(Math.random()*type.emojis.length)];
+ const list=["??","??","??","??","??","??","??","??"];
+ const emoji=list[Math.floor(Math.random()*list.length)];
  fish.textContent=emoji;
 
  let x=Math.random()*window.innerWidth;
  let y=Math.random()*window.innerHeight;
-
  fish.style.left=x+"px";
  fish.style.top=y+"px";
 
  game.appendChild(fish);
 
- let sx=0,sy=0;
-
- if(emoji==="🐟")sx=1;
- if(emoji==="🐠")sx=2;
- if(emoji==="🦀")sx=2;
- if(emoji==="🦞")sx=3;
- if(emoji==="🐬")sx=5;
- if(emoji==="🐙"){sx=Math.random()*2-1; sy=Math.random()*2-1;}
+ let sx=(Math.random()*4-2);
+ let sy=(Math.random()*4-2);
 
  const move=setInterval(()=>{
-   x+=sx; y+=sy;
-   if(x<0||x>window.innerWidth-40)sx*=-1;
-   if(y<0||y>window.innerHeight-40)sy*=-1;
-   fish.style.left=x+"px";
-   fish.style.top=y+"px";
+  x+=sx; y+=sy;
+  if(x<0||x>innerWidth-50)sx*=-1;
+  if(y<0||y>innerHeight-50)sy*=-1;
+  fish.style.left=x+"px";
+  fish.style.top=y+"px";
  },30);
 
- fish.onclick=(e)=>{
-   score+=type.point;
-   if(score<0)score=0;
-   scoreDisplay.textContent="スコア:"+score;
+ fish.addEventListener("touchstart",tap);
+ fish.addEventListener("click",tap);
 
-   showScorePopup(e.clientX,e.clientY,type.point);
+ function tap(e){
+  let val=1;
+  if(emoji==="??")val=5;
+  if(emoji==="??")val=-3;
 
-   (type.point>0?goodSound:badSound).play();
+  score+=val;
+  if(score<0)score=0;
 
-   clearInterval(move);
-   fish.remove();
- };
+  popup(x,y,val);
+  (val>0?good:bad).play();
 
- setTimeout(()=>{
-   clearInterval(move);
-   fish.remove();
- },3000);
+  fish.remove();
+  clearInterval(move);
+ }
+
+ setTimeout(()=>{fish.remove(); clearInterval(move);},3000);
 }
 
-function createBubble(){
+function bubble(){
  const b=document.createElement("div");
  b.className="bubble";
  b.textContent="○";
- b.style.left=Math.random()*window.innerWidth+"px";
+ b.style.left=Math.random()*innerWidth+"px";
  b.style.animationDuration=(3+Math.random()*3)+"s";
  game.appendChild(b);
  setTimeout(()=>b.remove(),6000);
 }
 
-function spawnBoss(){
- if(bossActive)return;
+function bossSpawn(){
+ if(boss)return;
+ boss=true;
 
- bossActive=true;
- bgmNormal.pause();
- bgmBoss.play();
+ bgm.pause();
+ bossbgm.play();
 
- const boss=document.createElement("div");
- boss.textContent="🐙";
- boss.style.position="absolute";
- boss.style.fontSize="100px";
+ const b=document.createElement("div");
+ b.textContent="??";
+ b.style.fontSize="120px";
+ b.style.position="absolute";
 
- let x=200,y=200,hp=5;
+ let hp=5,x=100,y=100;
+ game.appendChild(b);
 
- game.appendChild(boss);
-
- const move=setInterval(()=>{
-   x+=3; y+=2;
-   boss.style.left=x+"px";
-   boss.style.top=y+"px";
+ const m=setInterval(()=>{
+  x+=3; y+=2;
+  b.style.left=x+"px";
+  b.style.top=y+"px";
  },30);
 
- boss.onclick=(e)=>{
-   hp--;
-   if(hp<=0){
-     score+=20;
+ b.addEventListener("touchstart",hit);
+ b.addEventListener("click",hit);
 
-     showScorePopup(e.clientX,e.clientY,20);
-
-     scoreDisplay.textContent="スコア:"+score;
-
-     clearInterval(move);
-     boss.remove();
-
-     bossActive=false;
-     bgmBoss.pause();
-     bgmNormal.play();
-   }
- };
-}
-
-function saveHighScore(s){
- let scores=JSON.parse(localStorage.getItem("scores"))||[];
- scores.push(s);
- scores.sort((a,b)=>b-a);
- scores=scores.slice(0,5);
- localStorage.setItem("scores",JSON.stringify(scores));
-}
-
-function getScores(){
- return JSON.parse(localStorage.getItem("scores"))||[];
-}
-
-function rankingHTML(){
- let s=getScores();
- let html="<h2>🏆ランキング</h2>";
- s.forEach((v,i)=> html+=`<p>${i+1}位:${v}</p>`);
- return html;
+ function hit(e){
+  hp--;
+  if(hp<=0){
+   score+=20;
+   popup(x,y,20);
+   b.remove();
+   clearInterval(m);
+   boss=false;
+   bossbgm.pause();
+   bgm.play();
+  }
+ }
 }
 
 function startGame(){
  score=0;
- timeLeft=30;
+ time=30;
  level=1;
- bossActive=false;
-
  overlay.style.display="none";
 
- bgmNormal.currentTime=0;
- bgmNormal.play();
+ bgm.currentTime=0;
+ bgm.play();
 
- fishInterval=setInterval(createFish,800);
- timerInterval=setInterval(updateTimer,1000);
- bubbleInterval=setInterval(createBubble,300);
-}
+ fishInt=setInterval(spawn,800);
+ timerInt=setInterval(()=>{
+  time--;
+  document.getElementById("timer").textContent=time;
 
-function updateTimer(){
- timeLeft--;
- timerDisplay.textContent="残り:"+timeLeft;
-
- if(timeLeft%5===0){
+  if(time%5===0){
    level++;
-   levelDisplay.textContent="Lv."+level;
+   document.getElementById("level").textContent="Lv"+level;
+   clearInterval(fishInt);
+   fishInt=setInterval(spawn,Math.max(200,800-level*100));
+  }
 
-   clearInterval(fishInterval);
-   fishInterval=setInterval(createFish,Math.max(200,800-level*100));
- }
+  if(time===15)bossSpawn();
 
- if(timeLeft===15)spawnBoss();
+  if(time<=0)end();
+ },1000);
 
- if(timeLeft<=0)endGame();
+ bubbleInt=setInterval(bubble,300);
 }
 
-function endGame(){
- clearInterval(timerInterval);
- clearInterval(fishInterval);
- clearInterval(bubbleInterval);
+function end(){
+ clearInterval(fishInt);
+ clearInterval(timerInt);
+ clearInterval(bubbleInt);
 
- bgmNormal.pause();
- bgmBoss.pause();
-
- saveHighScore(score);
+ bgm.pause();
+ bossbgm.pause();
 
  overlay.style.display="flex";
  overlay.innerHTML=`
-   <h1>ゲーム終了</h1>
-   <p>スコア:${score}</p>
-   ${rankingHTML()}
-   <button onclick="startGame()">もう一度</button>
+  <h1>終了！</h1>
+  <p>スコア:${score}</p>
+  <button onclick="location.reload()">もう一回</button>
  `;
 }
 </script>
