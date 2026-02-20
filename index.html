@@ -93,7 +93,7 @@ button {
   <div id="level">Lv1</div>
 
   <div id="overlay">
-    <h1>?? タップでキャッチ！</h1>
+    <h1>🐠 タップでキャッチ！</h1>
     <button onclick="startGame()">スタート</button>
   </div>
 </div>
@@ -130,7 +130,7 @@ function spawn(){
  const fish=document.createElement("div");
  fish.className="fish";
 
- const list=["??","??","??","??","??","??","??","??"];
+ const list=["🐟","🐠","🐡","🦀","🐬","🦞","💎","🦈"];
  const emoji=list[Math.floor(Math.random()*list.length)];
  fish.textContent=emoji;
 
@@ -157,8 +157,8 @@ function spawn(){
 
  function tap(e){
   let val=1;
-  if(emoji==="??")val=5;
-  if(emoji==="??")val=-3;
+  if(emoji==="💎")val=5;
+  if(emoji==="🦈")val=-3;
 
   score+=val;
   if(score<0)score=0;
@@ -191,7 +191,7 @@ function bossSpawn(){
  bossbgm.play();
 
  const b=document.createElement("div");
- b.textContent="??";
+ b.textContent="🐙";
  b.style.fontSize="120px";
  b.style.position="absolute";
 
